@@ -221,3 +221,17 @@ export async function downloadReport(data, opts = {}) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
   return file;
 }
+
+
+/** Empty sheet in the same layout, for people who want a ready format (optional). */
+export async function downloadTemplate({ modules, team }, module) {
+  const mods = modules.filter((m) => m.code === module);
+  const use = mods.length ? mods : modules.slice(0, 1);
+  const buf = await buildReport({ testcases: [], bugs: [], modules: use, team }, { module: use[0]?.code });
+  const file = `MagtechOne_Import_Template_${use[0]?.code || "module"}.xlsx`;
+  const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: file });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  return file;
+}

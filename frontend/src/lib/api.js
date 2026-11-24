@@ -3,7 +3,7 @@
 //  - demoApi: keeps data in this browser only (preview without a backend).
 import { hashPassword, verifyPassword, sealToken, openToken } from './passwords.js';
 import seed from '../demo/seed.json';
-import { canClose, closeBlockReason, historyEntry, nextBugId, nowIso, MODULE_CODE_RE, DEFAULT_PASSWORD } from './rules.js';
+import { canClose, closeBlockReason, historyEntry, nextBugId, nextTestCaseId, nowIso, MODULE_CODE_RE, DEFAULT_PASSWORD } from './rules.js';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -198,9 +198,27 @@ function coreApi(S, persist) {
       return delay(S.db.modules);
     },
     async importData({ testcases = [], bugs = [], modules = [] }) {
+      testcases = [...testcases]; bugs = [...bugs];
       const u = me();
       for (const m of modules) if (!S.db.modules.some((x) => x.code === m.code)) S.db.modules.push(m);
       const at = nowIso();
+      // New records got their IDs in the preview; if someone saved the same ID meanwhile, take the next free one.
+      const tcRemap = new Map();
+      testcases = testcases.map(({ _new, ...t }) => {
+        if (_new && S.db.testcases.some((x) => x.id === t.id)) {
+          const id = nextTestCaseId([...S.db.testcases, ...testcases], t.module);
+          tcRemap.set(t.id, id);
+          return { ...t, id };
+        }
+        return t;
+      });
+      let bugMax = S.db.bugs.reduce((mx, b) => Math.max(mx, parseInt(String(b.id).replace(/D/g, ''), 10) || 0), 0);
+      bugMax = Math.max(bugMax, ...bugs.map((b) => parseInt(String(b.id).replace(/D/g, ''), 10) || 0));
+      bugs = bugs.map(({ _new, ...b }) => {
+        const out = { ...b, testCaseId: tcRemap.get(b.testCaseId) || b.testCaseId };
+        if (_new && S.db.bugs.some((x) => x.id === b.id)) out.id = 'BUG-' + String(++bugMax).padStart(3, '0');
+        return out;
+      });
       for (const t of testcases) {
         const cur = S.db.testcases.find((x) => x.id === t.id);
         const rec = cur

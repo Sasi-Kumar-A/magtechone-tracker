@@ -71,3 +71,38 @@ export async function readXlsx(file) {
   }
   return sheets;
 }
+
+/** CSV / TSV reader: detects , ; or tab, handles quotes and line breaks inside quotes. */
+export function parseCsv(textIn) {
+  const t = textIn.replace(/^﻿/, '');
+  const firstLines = t.split(/\r?\n/).slice(0, 5).join('\n');
+  const count = (ch) => firstLines.split(ch).length - 1;
+  const sep = ['\t', ';', ','].sort((a, b) => count(b) - count(a))[0];
+  const rows = [];
+  let row = [], cell = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) {
+      if (c === '"') { if (t[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c;
+    } else if (c === '"' && cell === '') q = true;
+    else if (c === sep) { row.push(cell); cell = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && t[i + 1] === '\n') i++; row.push(cell); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+/** Reads .xlsx or .csv/.tsv/.txt into [{ name, rows }]. */
+export async function readAnySheet(file) {
+  const name = file.name || 'file';
+  if (/\.xlsx$/i.test(name)) return readXlsx(file);
+  if (/\.(csv|tsv|txt)$/i.test(name)) {
+    const buf = await file.arrayBuffer();
+    let txt = new TextDecoder('utf-8', { fatal: false }).decode(buf);
+    if (txt.includes('�')) txt = new TextDecoder('windows-1252').decode(buf); // Excel "CSV" on Windows
+    return [{ name: name.replace(/\.[^.]+$/, ''), rows: parseCsv(txt) }];
+  }
+  if (/\.xls$/i.test(name)) throw new Error('Old .xls files can\'t be read. In Excel: File → Save As → Excel Workbook (.xlsx) or CSV.');
+  throw new Error('Please choose an Excel (.xlsx) or CSV file.');
+}

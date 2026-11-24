@@ -573,3 +573,10 @@ a.brand { color: #fff; text-decoration: none; }
 .dl-report select { height: 38px; border-radius: 10px; padding: 0 8px; border: 1px solid rgb(255 255 255 / 0.4); background: rgb(255 255 255 / 0.14); color: inherit; }
 .dl-report select option { color: #111; }
 .page-head .dl-report select { border-color: var(--line); background: var(--surface); }
+
+.imp-tabs { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+.imp-tabs button { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: inherit; cursor: pointer; }
+.imp-tabs button.on { background: #b80035; color: #fff; border-color: transparent; }
+.imp-issues .tag.ok { background: #dcfce7; color: #166534; }
+.imp-issues .tag.bad { background: #fee2e2; color: #991b1b; }
+.imp-opts select { margin-left: 8px; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: inherit; }
