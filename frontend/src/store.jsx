@@ -30,9 +30,17 @@ export function useTheme() {
 }
 
 export function TrackerProvider({ children }) {
-  const [data, setData] = useState({ testcases: [], bugs: [], team: [], modules: [] });
+  // Last data seen on this device (no password hashes): shown instantly, then refreshed.
+  const [data, setData] = useState(() => {
+    try { const c = JSON.parse(localStorage.getItem('mt-cache-v1')); if (c && session.get() && c.user === session.get()?.user?.id) return c.data; } catch { /* ignore */ }
+    return { testcases: [], bugs: [], team: [], modules: [] };
+  });
+  useEffect(() => {
+    if (!user || !data.team.length) return;
+    try { localStorage.setItem('mt-cache-v1', JSON.stringify({ user: user.id, data })); } catch { /* full or blocked */ }
+  }, [data, user]);
   const [user, setUser] = useState(() => session.get()?.user || null);
-  const [loading, setLoading] = useState(!!session.get());
+  const [loading, setLoading] = useState(() => !!session.get() && !localStorage.getItem('mt-cache-v1'));
   const [error, setError] = useState('');
   const [toasts, setToasts] = useState([]);
   const [lastSync, setLastSync] = useState(null);
@@ -53,6 +61,7 @@ export function TrackerProvider({ children }) {
     setLastSync(null);
     setToasts([]);
     setData({ testcases: [], bugs: [], team: [], modules: [] });
+    try { localStorage.removeItem('mt-cache-v1'); } catch { /* ignore */ }
   }, []);
 
   const reload = useCallback(async (quiet) => {
@@ -127,14 +136,27 @@ export function TrackerProvider({ children }) {
 
   const actions = {
     createTestCase: (tc) => run(async () => { const r = await api.createTestCase(tc); replace('testcases', r); return r; }, (r) => `${r.id} added`),
-    updateTestCase: (tc, msg) => run(async () => { const r = await api.updateTestCase(tc); replace('testcases', r); return r; }, msg || ((r) => `${r.id} saved`)),
+    // Updates show on screen immediately and save in the background; undone if the save fails.
+    updateTestCase: async (tc, msg) => {
+      const prev = data.testcases.find((x) => x.id === tc.id);
+      if (prev) { const { _action, ...clean } = tc; replace('testcases', { ...prev, ...clean }); }
+      const r = await run(async () => { const res = await api.updateTestCase(tc); replace('testcases', res); return res; }, msg || ((x) => `${x.id} saved`));
+      if (!r && prev) replace('testcases', prev);
+      return r;
+    },
     createBug: (bug) => run(async () => {
       const r = await api.createBug(bug);
       replace('bugs', r);
       if (r.testCaseId) reload(true);
       return r;
     }, (r) => `${r.id} reported`),
-    updateBug: (bug, msg) => run(async () => { const r = await api.updateBug(bug); replace('bugs', r); return r; }, msg || ((r) => `${r.id} updated`)),
+    updateBug: async (bug, msg) => {
+      const prev = data.bugs.find((x) => x.id === bug.id);
+      if (prev) replace('bugs', { ...prev, ...bug });
+      const r = await run(async () => { const res = await api.updateBug(bug); replace('bugs', res); return res; }, msg || ((x) => `${x.id} updated`));
+      if (!r && prev) replace('bugs', prev);
+      return r;
+    },
     saveTeam: (team) => run(async () => { const r = await api.saveTeam(team); setData((d) => ({ ...d, team: r })); return r; }, 'Team saved'),
     saveModules: (mods) => run(async () => { const r = await api.saveModules(mods); setData((d) => ({ ...d, modules: r })); return r; }, 'Modules saved'),
     importData: (payload) => run(async () => { const r = await api.importData(payload); setData(r); return r; }),

@@ -243,12 +243,10 @@ const tabGet = (k) => { try { return sessionStorage.getItem(k); } catch { return
 const tabSet = (k, v) => { try { if (v == null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch { /* no storage */ } };
 const vaultKeyFor = (id) => `mt-gh-vault:${id}`;
 export const hasDeviceToken = (login) => !!safeGet(vaultKeyFor(String(login || '').trim().toLowerCase()));
-const b64decode = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
 
 function githubApi(repo, branch) {
   const S = { db: null };
   const files = new Map(); // path -> canonical JSON text of what is in the repo
-  const blobCache = new Map(); // blob sha -> parsed JSON
   let head = null;
 
   async function gh(method, path, body, token = tabGet(GH_TOKEN_KEY)) {
@@ -284,29 +282,50 @@ function githubApi(repo, branch) {
     return out;
   }
 
+  // ---- GraphQL: one request to read everything, one request per save.
+  const [owner, name] = repo.split('/');
+  async function gql(query, variables = {}) {
+    const token = tabGet(GH_TOKEN_KEY);
+    if (!token) throw new ApiError(401, 'Please sign in again.');
+    let res;
+    try {
+      res = await fetch('https://api.github.com/graphql', {
+        method: 'POST', cache: 'no-store',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, variables }),
+      });
+    } catch {
+      throw new ApiError(0, 'Cannot reach GitHub. Check your connection.');
+    }
+    if (res.status === 401) throw new ApiError(401, 'GitHub did not accept the token. Please sign in again.');
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data) throw new ApiError(res.status, (data && data.message) || res.statusText);
+    if (data.errors?.length) {
+      const msg = data.errors.map((e) => e.message).join('; ');
+      const err = new ApiError(/expected|head|oid|stale|branch .* moved/i.test(msg) ? 409 : 400, msg);
+      err.gql = true;
+      throw err;
+    }
+    if (!data.data.repository && 'repository' in data.data) throw new ApiError(403, `No access to ${repo}. Ask your Lead to add your GitHub account and accept the invitation e-mail.`);
+    return data.data;
+  }
+
+  const HEAD_Q = `query($o:String!,$n:String!,$r:String!){repository(owner:$o,name:$n){ref(qualifiedName:$r){target{oid}}}}`;
+  const ALL_Q = `query($o:String!,$n:String!,$tc:String!,$bg:String!,$tm:String!,$md:String!){repository(owner:$o,name:$n){
+    tc:object(expression:$tc){...on Tree{entries{name object{...on Blob{text}}}}}
+    bg:object(expression:$bg){...on Tree{entries{name object{...on Blob{text}}}}}
+    tm:object(expression:$tm){...on Blob{text}}
+    md:object(expression:$md){...on Blob{text}}}}`;
+  const parse = (t) => { try { return t ? JSON.parse(t) : null; } catch { return null; } };
+
   async function sync() {
-    const ref = await gh('GET', `/repos/${repo}/git/ref/heads/${branch}`);
-    const sha = ref.object.sha;
+    const h = await gql(HEAD_Q, { o: owner, n: name, r: `refs/heads/${branch}` });
+    const sha = h.repository.ref.target.oid;
     if (sha === head && S.db) return;
-    const commit = await gh('GET', `/repos/${repo}/git/commits/${sha}`);
-    const tree = await gh('GET', `/repos/${repo}/git/trees/${commit.tree.sha}?recursive=1`);
-    const blobs = tree.tree.filter((t) => t.type === 'blob' && /^data\/.*\.json$/.test(t.path));
-    const todo = blobs.filter((b) => !blobCache.has(b.sha));
-    for (let i = 0; i < todo.length; i += 12) {
-      await Promise.all(todo.slice(i, i + 12).map(async (b) => {
-        const blob = await gh('GET', `/repos/${repo}/git/blobs/${b.sha}`);
-        try { blobCache.set(b.sha, JSON.parse(b64decode(blob.content))); } catch { blobCache.set(b.sha, null); }
-      }));
-    }
-    const db = { testcases: [], bugs: [], modules: [], team: [] };
-    for (const b of blobs) {
-      const v = blobCache.get(b.sha);
-      if (v == null) continue;
-      if (b.path === 'data/team.json') db.team = v;
-      else if (b.path === 'data/modules.json') db.modules = v;
-      else if (b.path.startsWith('data/testcases/')) db.testcases.push(v);
-      else if (b.path.startsWith('data/bugs/')) db.bugs.push(v);
-    }
+    const at = (p) => `${sha}:${p}`;
+    const r = (await gql(ALL_Q, { o: owner, n: name, tc: at('data/testcases'), bg: at('data/bugs'), tm: at('data/team.json'), md: at('data/modules.json') })).repository;
+    const list = (tree) => (tree?.entries || []).filter((e) => e.name.endsWith('.json')).map((e) => parse(e.object?.text)).filter(Boolean);
+    const db = { testcases: list(r.tc), bugs: list(r.bg), team: parse(r.tm?.text) || [], modules: parse(r.md?.text) || [] };
     db.testcases.sort((a, b) => a.id.localeCompare(b.id));
     db.bugs.sort((a, b) => a.id.localeCompare(b.id));
     S.db = db;
@@ -315,29 +334,45 @@ function githubApi(repo, branch) {
     head = sha;
   }
 
+  const b64 = (str) => { const bytes = new TextEncoder().encode(str); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
+  const COMMIT_M = `mutation($in:CreateCommitOnBranchInput!){createCommitOnBranch(input:$in){commit{oid}}}`;
+
   async function persist(message) {
     const changed = [];
-    for (const [p, t] of snapshot(S.db)) if (files.get(p) !== t) changed.push({ path: p, mode: '100644', type: 'blob', content: JSON.stringify(JSON.parse(t), null, 2) + '\n' });
+    for (const [p, t] of snapshot(S.db)) if (files.get(p) !== t) changed.push({ path: p, text: JSON.stringify(JSON.parse(t), null, 2) + '\n' });
     if (!changed.length) return;
-    const base = await gh('GET', `/repos/${repo}/git/commits/${head}`);
-    const tree = await gh('POST', `/repos/${repo}/git/trees`, { base_tree: base.tree.sha, tree: changed });
-    const commit = await gh('POST', `/repos/${repo}/git/commits`, { message: `tracker: ${message}`, tree: tree.sha, parents: [head] });
+    let out;
     try {
-      await gh('PATCH', `/repos/${repo}/git/refs/heads/${branch}`, { sha: commit.sha, force: false });
+      out = await gql(COMMIT_M, { in: {
+        branch: { repositoryNameWithOwner: repo, branchName: branch },
+        message: { headline: `tracker: ${message}` },
+        expectedHeadOid: head,
+        fileChanges: { additions: changed.map((c) => ({ path: c.path, contents: b64(c.text) })) },
+      } });
     } catch (e) {
-      head = null; // someone else saved in between: reload before the next try
-      if (e.status === 422 || e.status === 409) throw new ApiError(409, 'Someone else saved at the same moment. The page has been refreshed, please try again.');
+      head = null; // local copy may be out of date or half-changed: reload before the next try
+      if (e.gql) throw new ApiError(409, 'CONFLICT');
       throw e;
     }
-    head = commit.sha;
-    for (const c of changed) files.set(c.path, JSON.stringify(JSON.parse(c.content)));
+    head = out.createCommitOnBranch.commit.oid;
+    for (const c of changed) files.set(c.path, JSON.stringify(JSON.parse(c.text)));
   }
 
   const core = coreApi(S, persist);
-  // Every write starts from the latest repo state, so "changed meanwhile" checks are real.
+  // Save straight away (1 request). If someone else saved in between, GitHub refuses the
+  // commit; then reload once and redo the change on top of the latest data.
   const fresh = (fn) => async (...args) => {
-    await sync();
-    try { return await fn(...args); } catch (e) { if (e.status === 409) head = null; throw e; }
+    if (!S.db || !head) await sync();
+    try {
+      return await fn(...args);
+    } catch (e) {
+      if (e.message !== 'CONFLICT') { if (e.status === 409) head = null; throw e; }
+      await sync();
+      try { return await fn(...args); } catch (e2) {
+        if (e2.message === 'CONFLICT') { head = null; throw new ApiError(409, 'Someone else saved at the same moment. The page has been refreshed, please try again.'); }
+        throw e2;
+      }
+    }
   };
 
   return {
@@ -356,10 +391,14 @@ function githubApi(repo, branch) {
         token = await openToken(vault, password);
         if (!token) throw new ApiError(401, 'Wrong username or password.');
       }
-      const gu = await gh('GET', '/user', null, token);
-      const info = await gh('GET', `/repos/${repo}`, null, token);
-      if (!info.permissions?.push) throw new ApiError(403, `Your GitHub account @${gu.login} can read but not save to ${repo}. Ask your Lead for write access.`);
       tabSet(GH_TOKEN_KEY, token);
+      let who;
+      try { who = await gql('query($o:String!,$n:String!){viewer{login} repository(owner:$o,name:$n){viewerPermission}}', { o: owner, n: name }); }
+      catch (e) { tabSet(GH_TOKEN_KEY, null); throw e; }
+      const gu = { login: who.viewer.login };
+      const perm = who.repository.viewerPermission;
+      const info = { permissions: { push: ['WRITE', 'MAINTAIN', 'ADMIN'].includes(perm), admin: perm === 'ADMIN' } };
+      if (!info.permissions.push) { tabSet(GH_TOKEN_KEY, null); throw new ApiError(403, `Your GitHub account @${gu.login} can read but not save to ${repo}. Ask your Lead for write access.`); }
       const fail = (status, msg) => { tabSet(GH_TOKEN_KEY, null); throw new ApiError(status, msg); };
       head = null;
       await sync();
