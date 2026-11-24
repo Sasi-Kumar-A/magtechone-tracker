@@ -88,12 +88,17 @@ Without `VITE_API_URL` the website runs in **preview mode**: data stays in the b
 - The website reads and writes the data repo directly with **each person's own GitHub token**. Every save is one commit authored by that person. Nothing else to host, nothing that sleeps.
 - The rules guard workflow in the data repo (`.github/workflows/guard.yml`) checks every push and undoes changes that break the rules: only Leads change the team, only the assignee or a Lead closes a bug, people not in the team can't change anything.
 
-**Adding someone (Lead):** Team → Add member → fill in name, role and **GitHub username** → Save. GitHub e-mails them an invitation to the data repo.
+**Adding someone (Lead):** Team → Add member → name, role, **GitHub username** → Save. Their starting password is **tester12345** (or what you type). GitHub e-mails them an invitation to the data repo.
 
-**Signing in (everyone):**
-1. Accept the invitation e-mail from GitHub.
+**First sign-in (each person, once per device):**
+1. Accept the GitHub invitation e-mail.
 2. Create a token: GitHub → Settings → Developer settings → Personal access tokens → **Tokens (classic)** → Generate, tick **repo**. (Fine-grained tokens can't reach a repo you were only invited to.)
-3. Open the website, type your tracker username, paste the token, Sign in. The token is kept only in that browser; Sign out removes it.
+3. On the website: username + `tester12345` + paste the token → Sign in.
+4. The site asks you to **set your own password** before you continue.
+
+After that, on the same device you sign in with just **username + password**: the token is kept on the device, encrypted with your password. On a new device, paste the token once again. Forgot your password? The Lead opens Team → Edit → Reset to default.
+
+**Download report:** Dashboard, Test cases or Bugs → pick *All modules* or one module → **Download report**. You get an Excel file in the ATT_Test_Report_FINAL layout: Summary sheet (live formulas) + "<module> Test" and "<module> Bugs" sheets with the same columns, colours, filters and drop-downs.
 
 Removing someone: delete them in Team and remove them in the data repo → Settings → Collaborators.
 

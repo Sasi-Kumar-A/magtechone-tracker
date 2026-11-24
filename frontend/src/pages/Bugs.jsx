@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTracker } from '../store.jsx';
+import DownloadReport from '../components/DownloadReport.jsx';
 import { Avatar, Empty, Field, Icon, ModPill, Pill, Select } from '../components/ui.jsx';
 import { developerOptions } from '../components/BugForm.jsx';
 import { BUG_STATUSES, SEVERITIES, canClose, closeBlockReason, fmtDate, matches, memberName, timeAgo } from '../lib/rules.js';
@@ -50,6 +51,7 @@ export default function Bugs({ q, setQ, openBug, openTest, newBug, openImport })
           <p className="muted">Every bug with its details. Assign a developer right on the card; they get notified and only they can close it.</p>
         </div>
         <div className="row gap wrap">
+          <DownloadReport />
             <div className="seg" role="group" aria-label="Layout">
               <button className={view === 'cards' ? 'on' : ''} aria-pressed={view === 'cards'} onClick={() => setView('cards')}><Icon name="cards" size={16} /> Cards</button>
               <button className={view === 'board' ? 'on' : ''} aria-pressed={view === 'board'} onClick={() => setView('board')}><Icon name="board" size={16} /> Board</button>

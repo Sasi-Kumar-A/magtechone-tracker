@@ -12,6 +12,8 @@ import BugDrawer from './components/BugDrawer.jsx';
 import BugForm from './components/BugForm.jsx';
 import ImportModal from './components/ImportModal.jsx';
 import Notifications from './components/Notifications.jsx';
+import Clock from './components/Clock.jsx';
+import ForcePassword from './components/ForcePassword.jsx';
 
 const ROUTES = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
@@ -78,6 +80,7 @@ function Shell() {
   const [importing, setImporting] = useState(false);
 
   if (!user) return (<><Login /><Toasts items={toasts} onDismiss={dismiss} /></>);
+  if (user.mustChangePassword) return (<><ForcePassword /><Toasts items={toasts} onDismiss={dismiss} /></>);
 
   const openTest = (id) => { setBugId(null); setTestId(id); };
   const openBug = (id) => { setTestId(null); setBugId(id); };
@@ -95,6 +98,7 @@ function Shell() {
           <input id="global-q" type="search" placeholder="Search bugs and test cases" value={q} onChange={(e) => setQ(e.target.value)} />
         </form>
         <div className="top-right">
+          <Clock />
           <button className="icon-btn on-dark" onClick={() => setTheme(effective === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${effective === 'dark' ? 'light' : 'dark'} theme`}>
             <Icon name={effective === 'dark' ? 'sun' : 'moon'} />
           </button>

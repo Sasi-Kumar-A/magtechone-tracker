@@ -1,4 +1,5 @@
 import { useTracker } from '../store.jsx';
+import DownloadReport from '../components/DownloadReport.jsx';
 import { Avatar, ModPill, Pill, Icon } from '../components/ui.jsx';
 import { BUG_STATUSES, SEVERITIES, TC_STATUSES, memberName, timeAgo } from '../lib/rules.js';
 
@@ -59,6 +60,7 @@ export default function Dashboard({ openBug, openTest, go }) {
           <div className="hero-actions">
             <button className="btn light" onClick={() => go('testcases')}><Icon name="tests" /> Run tests</button>
             <button className="btn ghost-light" onClick={() => go('bugs')}><Icon name="bug" /> Open bug board</button>
+            <DownloadReport className="btn ghost-light" />
           </div>
         </div>
         <div className="ring" style={{ '--p': execPct }} role="img" aria-label={`${execPct}% of test cases executed`}>

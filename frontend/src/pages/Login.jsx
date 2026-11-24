@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTracker } from '../store.jsx';
 import { Icon } from '../components/ui.jsx';
-import { api } from '../lib/api.js';
+import { api, hasDeviceToken } from '../lib/api.js';
 
 const GH = api.kind === 'github';
 const TOKEN_URL = 'https://github.com/settings/tokens/new?scopes=repo&description=MagtechOne%20Tracker';
@@ -13,14 +13,17 @@ export default function Login() {
   const [show, setShow] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [tok, setTok] = useState('');
+  const needToken = GH && !hasDeviceToken(name);
 
   const submit = async (e) => {
     e.preventDefault();
-    if ((!GH && !name.trim()) || !pw) { setErr(GH ? 'Paste your GitHub token.' : 'Enter your username or email and your password.'); return; }
+    if (!name.trim() || !pw) { setErr('Enter your username and your password.'); return; }
+    if (needToken && !tok.trim()) { setErr('First sign-in on this device: paste your GitHub token too.'); return; }
     setBusy(true);
     setErr('');
     try {
-      await login(name.trim(), pw);
+      await login(name.trim(), pw, tok);
     } catch (ex) {
       setErr(ex.message || 'Could not sign in.');
       setBusy(false);
@@ -45,22 +48,28 @@ export default function Login() {
       <section className="login-card">
         <form onSubmit={submit} className="login-form" noValidate>
           <h2>Sign in</h2>
-          <p className="muted">{GH ? 'Use your tracker username and your own GitHub token. Your saves are recorded under your GitHub name.' : 'Use the username or email your QA lead gave you.'}</p>
+          <p className="muted">Use the username and password your QA lead gave you.</p>
           <div className="field">
-            <label htmlFor="login-name">Username or email{GH ? ' (optional if your Lead linked your GitHub account)' : ''}</label>
+            <label htmlFor="login-name">Username or email</label>
             <input id="login-name" autoComplete="username" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </div>
           <div className="field">
-            <label htmlFor="login-pw">{GH ? 'GitHub token' : 'Password'}</label>
+            <label htmlFor="login-pw">Password</label>
             <div className="pw">
               <input id="login-pw" type={show ? 'text' : 'password'} autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} />
               <button type="button" className="link" onClick={() => setShow((s) => !s)}>{show ? 'Hide' : 'Show'}</button>
             </div>
           </div>
+          {GH && (needToken || tok) && (
+            <div className="field">
+              <label htmlFor="login-tok">GitHub token <span className="muted small">(only the first time on this device)</span></label>
+              <input id="login-tok" type="password" autoComplete="off" value={tok} onChange={(e) => setTok(e.target.value)} placeholder="ghp_…" />
+            </div>
+          )}
           {err && <p className="error-text" role="alert">{err}</p>}
           <button className="btn primary block" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
           {GH ? (
-            <p className="muted small">No token yet? <a href={TOKEN_URL} target="_blank" rel="noreferrer">Create one on GitHub</a> (classic token, tick <b>repo</b>), then accept the invitation e-mail to the data repo. The token stays in this browser only.</p>
+            <p className="muted small">New here? Your password from the Lead is <code>tester12345</code>; you'll set your own right after signing in. First time on a device: accept the GitHub invitation e-mail, <a href={TOKEN_URL} target="_blank" rel="noreferrer">create a token</a> (classic, tick <b>repo</b>) and paste it above. It is kept on this device, locked with your password. Forgot your password? Ask your Lead to reset it.</p>
           ) : <p className="muted small">Forgot your password? Ask your QA lead to set a new one on the Team page.</p>}
           {mode === 'demo' && (
             <div className="demo-hint">

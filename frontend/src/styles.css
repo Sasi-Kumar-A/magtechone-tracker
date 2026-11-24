@@ -562,3 +562,14 @@ a.brand { color: #fff; text-decoration: none; }
   .hero .ring { display: none; }
   .kpi strong { font-size: 24px; }
 }
+
+/* live clock in the top bar */
+.top-clock { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: rgb(255 255 255 / 0.14); border: 1px solid rgb(255 255 255 / 0.3); font-size: 13px; white-space: nowrap; }
+.top-clock svg { width: 16px; height: 16px; }
+.top-clock time { font-variant-numeric: tabular-nums; font-weight: 700; }
+@media (max-width: 760px) { .top-clock .tc-date { display: none; } }
+/* download report */
+.dl-report { display: inline-flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.dl-report select { height: 38px; border-radius: 10px; padding: 0 8px; border: 1px solid rgb(255 255 255 / 0.4); background: rgb(255 255 255 / 0.14); color: inherit; }
+.dl-report select option { color: #111; }
+.page-head .dl-report select { border-color: var(--line); background: var(--surface); }

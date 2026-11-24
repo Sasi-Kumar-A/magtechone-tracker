@@ -11,3 +11,4 @@ backend/target/
 
 # data lives in the private repo magtechone-tracker-data
 /data/
+ATT_Test_Report_FINAL*.xlsx

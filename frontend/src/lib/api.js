@@ -1,6 +1,7 @@
 // Data access. Two adapters with the same interface:
 //  - restApi: talks to the Java backend, which stores everything in the GitHub repo.
 //  - demoApi: keeps data in this browser only (preview without a backend).
+import { hashPassword, verifyPassword, sealToken, openToken } from './passwords.js';
 import seed from '../demo/seed.json';
 import { canClose, closeBlockReason, historyEntry, nextBugId, nowIso, MODULE_CODE_RE, DEFAULT_PASSWORD } from './rules.js';
 
@@ -237,6 +238,11 @@ function demoApi() {
 // GitHub token. Every save is one commit, authored by that person. Rules are checked
 // here and again by the guard workflow in the data repo.
 const GH_TOKEN_KEY = 'mt-gh-token';
+// The plain token lives only for this browser tab; on disk it is kept encrypted with the password.
+const tabGet = (k) => { try { return sessionStorage.getItem(k); } catch { return null; } };
+const tabSet = (k, v) => { try { if (v == null) sessionStorage.removeItem(k); else sessionStorage.setItem(k, v); } catch { /* no storage */ } };
+const vaultKeyFor = (id) => `mt-gh-vault:${id}`;
+export const hasDeviceToken = (login) => !!safeGet(vaultKeyFor(String(login || '').trim().toLowerCase()));
 const b64decode = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
 
 function githubApi(repo, branch) {
@@ -245,7 +251,8 @@ function githubApi(repo, branch) {
   const blobCache = new Map(); // blob sha -> parsed JSON
   let head = null;
 
-  async function gh(method, path, body, token = safeGet(GH_TOKEN_KEY)) {
+  async function gh(method, path, body, token = tabGet(GH_TOKEN_KEY)) {
+    if (!token) throw new ApiError(401, 'Please sign in again.');
     let res;
     try {
       res = await fetch(`https://api.github.com${path}`, {
@@ -338,36 +345,60 @@ function githubApi(repo, branch) {
     mode: 'live',
     kind: 'github',
     label: `GitHub repository ${repo} (live)`,
-    async login(login, token) {
-      token = String(token).trim();
+    async login(login, password, newToken) {
+      const l = String(login || '').trim().toLowerCase();
+      if (!l) throw new ApiError(400, 'Enter your username.');
+      let token = String(newToken || '').trim();
+      let vault = null;
+      try { vault = JSON.parse(safeGet(vaultKeyFor(l)) || 'null'); } catch { vault = null; }
+      if (!token) {
+        if (!vault) throw new ApiError(401, 'This device is not connected yet. Paste your GitHub token once (below the password).');
+        token = await openToken(vault, password);
+        if (!token) throw new ApiError(401, 'Wrong username or password.');
+      }
       const gu = await gh('GET', '/user', null, token);
       const info = await gh('GET', `/repos/${repo}`, null, token);
       if (!info.permissions?.push) throw new ApiError(403, `Your GitHub account @${gu.login} can read but not save to ${repo}. Ask your Lead for write access.`);
-      safeSet(GH_TOKEN_KEY, token);
+      tabSet(GH_TOKEN_KEY, token);
+      const fail = (status, msg) => { tabSet(GH_TOKEN_KEY, null); throw new ApiError(status, msg); };
       head = null;
       await sync();
-      const l = String(login).trim().toLowerCase();
       const ghl = gu.login.toLowerCase();
-      let u = S.db.team.find((m) => m.id.toLowerCase() === l || (m.email || '').toLowerCase() === l);
-      if (!u && !l) u = S.db.team.find((m) => (m.github || '').toLowerCase() === ghl);
-      if (!u) { safeSet(GH_TOKEN_KEY, null); throw new ApiError(401, 'That username is not in the team. Ask your Lead to add you.'); }
-      if (u.github && u.github.toLowerCase() !== ghl) {
-        safeSet(GH_TOKEN_KEY, null);
-        throw new ApiError(401, `${u.id} is linked to GitHub @${u.github}, but this token belongs to @${gu.login}.`);
-      }
+      const u = S.db.team.find((m) => m.id.toLowerCase() === l || (m.email || '').toLowerCase() === l);
+      if (!u) fail(401, 'Wrong username or password.');
+      const pwOk = u.passwordHash ? await verifyPassword(password, u.passwordHash) : password === DEFAULT_PASSWORD;
+      if (!pwOk) fail(401, 'Wrong username or password.');
+      if (u.github && u.github.toLowerCase() !== ghl) fail(401, `${u.id} is linked to GitHub @${u.github}, but this token belongs to @${gu.login}.`);
+      let changed = false;
       if (!u.github) {
-        // First sign-in: only the repo owner/admin may link a member to their own GitHub account.
-        if (!info.permissions?.admin) { safeSet(GH_TOKEN_KEY, null); throw new ApiError(401, `Ask your Lead to put your GitHub username (@${gu.login}) on your Team entry first.`); }
-        u.github = gu.login;
-        await persist(`${u.id} linked to GitHub @${gu.login}`);
+        // Only the repo owner/admin may link a member to their own GitHub account on first sign-in.
+        if (!info.permissions?.admin) fail(401, `Ask your Lead to put your GitHub username (@${gu.login}) on your Team entry first.`);
+        u.github = gu.login; changed = true;
       }
+      if (!u.passwordHash) { u.mustChangePassword = true; changed = true; }
+      if (changed) await persist(`${u.id} signed in for the first time`);
+      safeSet(vaultKeyFor(u.id), JSON.stringify(await sealToken(token, password)));
       const user = publicMember(u);
       session.set({ token: 'github', user });
       return user;
     },
     me: fresh(core.me),
-    logout() { session.set(null); safeSet(GH_TOKEN_KEY, null); },
-    changePassword: async () => { throw new ApiError(400, 'Sign-in uses your GitHub token, so there is no tracker password to change.'); },
+    logout() { session.set(null); tabSet(GH_TOKEN_KEY, null); },
+    forgetDevice(id) { safeSet(vaultKeyFor(id), null); },
+    changePassword: fresh(async (current, next) => {
+      const u = core.whoami();
+      const ok = u.passwordHash ? await verifyPassword(current, u.passwordHash) : current === DEFAULT_PASSWORD;
+      if (!ok) throw new ApiError(400, 'Current password is wrong.');
+      if (String(next).length < 8) throw new ApiError(400, 'New password needs at least 8 characters.');
+      if (next === DEFAULT_PASSWORD) throw new ApiError(400, 'Choose a password that is different from the default one.');
+      u.passwordHash = await hashPassword(next);
+      delete u.mustChangePassword;
+      await persist(`${u.id} changed their password`);
+      const token = tabGet(GH_TOKEN_KEY);
+      if (token) safeSet(vaultKeyFor(u.id), JSON.stringify(await sealToken(token, next)));
+      session.set({ token: 'github', user: publicMember(u) });
+      return { ok: true };
+    }),
     async load() { await sync(); return core.load(); },
     createTestCase: fresh(core.createTestCase),
     updateTestCase: fresh(core.updateTestCase),
@@ -387,9 +418,12 @@ function githubApi(repo, branch) {
         if (ids.has(id)) throw new ApiError(400, `Username ${id} is used twice.`);
         ids.add(id);
         const { password, newPassword, originalId, ...prev } = { ...(old.get(id) || {}) };
+        if (m.newPassword && m.newPassword.length < 8) throw new ApiError(400, 'Passwords need at least 8 characters.');
+        if (!old.has(id) || m.newPassword) { prev.passwordHash = m.newPassword || DEFAULT_PASSWORD; prev.mustChangePassword = true; }
         return { ...prev, id, name: String(m.name || '').trim(), email: (m.email || '').trim(), role: m.role, github: (m.github || '').replace(/^@/, '').trim() };
       });
       if (!next.some((m) => m.role === 'Lead')) throw new ApiError(400, 'The team needs at least one Lead.');
+      for (const m of next) if (m.passwordHash && !m.passwordHash.startsWith('pbkdf2$')) m.passwordHash = await hashPassword(m.passwordHash);
       S.db.team = next;
       await persist(`Team updated by ${u.id}`);
       const failed = [];

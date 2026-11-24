@@ -84,8 +84,8 @@ export function TrackerProvider({ children }) {
 
   useEffect(() => { if (user) setSeenAt(read(`mt-seen-${user.id}`, '')); }, [user?.id]);
 
-  const login = async (loginName, password) => {
-    const u = await api.login(loginName, password);
+  const login = async (loginName, password, token) => {
+    const u = await api.login(loginName, password, token);
     setUser(u);
     return u;
   };

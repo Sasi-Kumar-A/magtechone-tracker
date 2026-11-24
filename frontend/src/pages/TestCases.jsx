@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useTracker } from '../store.jsx';
+import DownloadReport from '../components/DownloadReport.jsx';
 import { Empty, Field, Icon, ModPill, Modal, Pill, Select } from '../components/ui.jsx';
 import { PRIORITIES, TC_STATUSES, fmtDate, matches, memberName, nextTestCaseId } from '../lib/rules.js';
 
@@ -31,6 +32,7 @@ export default function TestCases({ q, setQ, openTest, openImport }) {
           <p className="muted">Anyone on the team can add, edit and record results. Click a row to open it.</p>
         </div>
         <div className="row gap wrap">
+          <DownloadReport />
           <button className="btn" onClick={openImport}><Icon name="upload" /> Import Excel</button>
           <button className="btn primary" onClick={() => setAdding(true)}><Icon name="plus" /> New test case</button>
         </div>

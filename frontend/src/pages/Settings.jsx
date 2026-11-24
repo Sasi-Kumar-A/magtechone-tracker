@@ -57,14 +57,13 @@ function Account({ user }) {
         <div className="grow"><strong>{user?.name}</strong><div className="muted small">@{user?.id}{user?.email ? ` · ${user.email}` : ''}</div></div>
         <Pill>{user?.role}</Pill>
       </div>
-      {gh ? <p className="muted mt-s">You sign in with your GitHub token, so there is no tracker password. To stop access, sign out or delete the token on GitHub.</p> : (
       <form className="form one" onSubmit={submit}>
         <Field label="Current password" id="pw-cur"><input id="pw-cur" type="password" autoComplete="current-password" value={cur} onChange={(e) => setCur(e.target.value)} /></Field>
         <Field label="New password" id="pw-new" hint="At least 8 characters."><input id="pw-new" type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} /></Field>
         <Field label="Repeat new password" id="pw-again" hint={mismatch ? 'Passwords do not match.' : ''}><input id="pw-again" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} /></Field>
         <div><button className="btn primary" disabled={!ok || busy}>{busy ? 'Saving…' : 'Change password'}</button></div>
       </form>
-      )}
+      {gh && <p className="muted small mt-s">Your GitHub token is kept on this device, locked with this password. Changing the password re-locks it.</p>}
     </section>
   );
 }
