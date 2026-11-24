@@ -1,8 +1,10 @@
+import { api } from '../lib/api.js';
 import { useEffect, useState } from 'react';
 import { useTracker } from '../store.jsx';
 import { Avatar, Field, Icon, Modal, Pill, Select } from '../components/ui.jsx';
 import { DEFAULT_PASSWORD, ROLES, usernameFromName } from '../lib/rules.js';
 
+const GH = api.kind === 'github';
 const blank = { id: '', name: '', email: '', role: 'QA', github: '', newPassword: DEFAULT_PASSWORD };
 
 export default function Team() {
@@ -35,7 +37,7 @@ export default function Team() {
       <div className="page-head">
         <div>
           <h1>Team</h1>
-          <p className="muted">{team.length} people. {isLead ? `As a Lead you add people and set their role. New members sign in with their username and the default password ${DEFAULT_PASSWORD}.` : 'Only a Lead can change the team.'}</p>
+          <p className="muted">{team.length} people. {isLead ? (GH ? 'As a Lead you add people, set their role and GitHub username. Saving invites them to the data repo; they sign in with their own GitHub token.' : `As a Lead you add people and set their role. New members sign in with their username and the default password ${DEFAULT_PASSWORD}.`) : 'Only a Lead can change the team.'}</p>
         </div>
         {isLead && <button className="btn primary" onClick={() => { setIsNew(true); setEditing({ ...blank }); }}><Icon name="plus" /> Add member</button>}
       </div>
@@ -100,7 +102,7 @@ function MemberForm({ draft, isNew, onClose, onSave }) {
     setF((x) => ({ ...x, name, id: idTouched ? x.id : usernameFromName(name) }));
   };
   const validId = /^[a-z0-9._-]{3,30}$/.test(f.id.trim().toLowerCase());
-  const pwOk = isNew ? f.newPassword.length >= 8 : !f.newPassword || f.newPassword.length >= 8;
+  const pwOk = GH ? /^[A-Za-z0-9-]{1,39}$/.test(String(f.github).replace(/^@/, '').trim()) : isNew ? f.newPassword.length >= 8 : !f.newPassword || f.newPassword.length >= 8;
   const ok = f.name.trim() && validId && pwOk && (!f.email || /^\S+@\S+\.\S+$/.test(f.email));
 
   const submit = async (e) => {
@@ -123,13 +125,13 @@ function MemberForm({ draft, isNew, onClose, onSave }) {
         </Field>
         <Field label="Email" id="m-email"><input id="m-email" type="text" inputMode="email" value={f.email} onChange={set('email')} placeholder="name@company.com" /></Field>
         <Field label="Role" id="m-role"><Select id="m-role" value={f.role} onChange={set('role')} options={ROLES} /></Field>
-        <Field label="GitHub username" id="m-gh" hint="Developers need this to get bug notifications."><input id="m-gh" value={f.github} onChange={set('github')} placeholder="username" /></Field>
-        <Field label={isNew ? 'Starting password *' : 'New password'} id="m-pw" hint={isNew ? `Default is ${DEFAULT_PASSWORD}. Ask them to change it in Settings after first sign-in.` : 'Leave empty to keep their current password.'}>
+        <Field label={GH ? 'GitHub username *' : 'GitHub username'} id="m-gh" hint={GH ? 'Required. Saving sends them a GitHub invitation to the data repo; they accept it, then sign in with their own token.' : 'Developers need this to get bug notifications.'}><input id="m-gh" value={f.github} onChange={set('github')} placeholder="username" /></Field>
+        {!GH && <Field label={isNew ? 'Starting password *' : 'New password'} id="m-pw" hint={isNew ? `Default is ${DEFAULT_PASSWORD}. Ask them to change it in Settings after first sign-in.` : 'Leave empty to keep their current password.'}>
           <div className="row gap">
             <input id="m-pw" type="text" value={f.newPassword} onChange={set('newPassword')} autoComplete="new-password" />
             {!isNew && <button type="button" className="btn sm" onClick={() => setF((x) => ({ ...x, newPassword: DEFAULT_PASSWORD }))}>Reset to default</button>}
           </div>
-        </Field>
+        </Field>}
         {err && <p className="error-text wide" role="alert">{err}</p>}
       </form>
     </Modal>

@@ -81,7 +81,23 @@ Sign in as the Lead: username **tester**, password **tester12345**.
 
 Without `VITE_API_URL` the website runs in **preview mode**: data stays in the browser; the same accounts and password work.
 
-## Put it online
+## Live setup used now: GitHub only (no server)
+
+- Website: https://sasi-kumar-a.github.io/magtechone-tracker/
+- Data: private repo `Sasi-Kumar-A/magtechone-tracker-data` (set as the Actions variable `TRACKER_DATA_REPO` on this repo).
+- The website reads and writes the data repo directly with **each person's own GitHub token**. Every save is one commit authored by that person. Nothing else to host, nothing that sleeps.
+- The rules guard workflow in the data repo (`.github/workflows/guard.yml`) checks every push and undoes changes that break the rules: only Leads change the team, only the assignee or a Lead closes a bug, people not in the team can't change anything.
+
+**Adding someone (Lead):** Team → Add member → fill in name, role and **GitHub username** → Save. GitHub e-mails them an invitation to the data repo.
+
+**Signing in (everyone):**
+1. Accept the invitation e-mail from GitHub.
+2. Create a token: GitHub → Settings → Developer settings → Personal access tokens → **Tokens (classic)** → Generate, tick **repo**. (Fine-grained tokens can't reach a repo you were only invited to.)
+3. Open the website, type your tracker username, paste the token, Sign in. The token is kept only in that browser; Sign out removes it.
+
+Removing someone: delete them in Team and remove them in the data repo → Settings → Collaborators.
+
+## Alternative: Java API server
 
 ### 1. Repos
 - Code repo (can be public): push this whole folder.
