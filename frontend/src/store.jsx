@@ -35,11 +35,11 @@ export function TrackerProvider({ children }) {
     try { const c = JSON.parse(localStorage.getItem('mt-cache-v1')); if (c && session.get() && c.user === session.get()?.user?.id) return c.data; } catch { /* ignore */ }
     return { testcases: [], bugs: [], team: [], modules: [] };
   });
+  const [user, setUser] = useState(() => session.get()?.user || null);
   useEffect(() => {
     if (!user || !data.team.length) return;
     try { localStorage.setItem('mt-cache-v1', JSON.stringify({ user: user.id, data })); } catch { /* full or blocked */ }
   }, [data, user]);
-  const [user, setUser] = useState(() => session.get()?.user || null);
   const [loading, setLoading] = useState(() => !!session.get() && !localStorage.getItem('mt-cache-v1'));
   const [error, setError] = useState('');
   const [toasts, setToasts] = useState([]);
