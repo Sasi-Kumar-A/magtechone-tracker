@@ -19,7 +19,7 @@ export default function Login() {
   const submit = async (e) => {
     e.preventDefault();
     if (!name.trim() || !pw) { setErr('Enter your username and your password.'); return; }
-    if (needToken && !tok.trim()) { setErr('First sign-in on this device: paste your GitHub token too.'); return; }
+    if (needToken && !tok.trim()) { setErr(`"${name.trim()}" has not signed in on this device yet. If that is your username, paste your GitHub token too (first time only). Otherwise check the username your Lead gave you.`); return; }
     setBusy(true);
     setErr('');
     try {

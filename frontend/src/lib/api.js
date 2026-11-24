@@ -352,7 +352,7 @@ function githubApi(repo, branch) {
       let vault = null;
       try { vault = JSON.parse(safeGet(vaultKeyFor(l)) || 'null'); } catch { vault = null; }
       if (!token) {
-        if (!vault) throw new ApiError(401, 'This device is not connected yet. Paste your GitHub token once (below the password).');
+        if (!vault) throw new ApiError(401, `"${l}" has not signed in on this device yet. If that is your username, paste your GitHub token too (first time only). Otherwise check the username your Lead gave you.`);
         token = await openToken(vault, password);
         if (!token) throw new ApiError(401, 'Wrong username or password.');
       }
@@ -365,7 +365,7 @@ function githubApi(repo, branch) {
       await sync();
       const ghl = gu.login.toLowerCase();
       const u = S.db.team.find((m) => m.id.toLowerCase() === l || (m.email || '').toLowerCase() === l);
-      if (!u) fail(401, 'Wrong username or password.');
+      if (!u) fail(401, `There is no team member with the username "${l}". Ask your Lead for your username (Lead: see the Team page).`);
       const pwOk = u.passwordHash ? await verifyPassword(password, u.passwordHash) : password === DEFAULT_PASSWORD;
       if (!pwOk) fail(401, 'Wrong username or password.');
       if (u.github && u.github.toLowerCase() !== ghl) fail(401, `${u.id} is linked to GitHub @${u.github}, but this token belongs to @${gu.login}.`);
