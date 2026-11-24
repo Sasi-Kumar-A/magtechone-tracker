@@ -1,0 +1,13 @@
+node_modules/
+frontend/dist/
+backend/out/
+backend/target/
+*.class
+.env
+.env.local
+.DS_Store
+.idea/
+*.iml
+
+# data lives in the private repo magtechone-tracker-data
+/data/

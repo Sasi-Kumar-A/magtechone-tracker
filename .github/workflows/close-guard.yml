@@ -1,0 +1,35 @@
+name: Close guard
+
+# If a bug's GitHub issue is closed by anyone other than its assignee (or a lead),
+# reopen it and leave a comment. Settings > Variables > TRACKER_LEADS = "api-token-owner,lead1"
+# (include the account that owns the backend's GITHUB_TOKEN, because the tracker closes issues as that account)
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  issues: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        env:
+          LEADS: ${{ vars.TRACKER_LEADS }}
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const closer = context.payload.sender.login;
+            const assignees = (issue.assignees || []).map(a => a.login);
+            const leads = (process.env.LEADS || '').split(',').map(s => s.trim()).filter(Boolean);
+            const isBug = (issue.labels || []).some(l => l.name === 'bug');
+            if (!isBug || assignees.length === 0) return;
+            if (assignees.includes(closer) || leads.includes(closer)) return;
+            // The tracker backend closes issues with its own token; allow that bot account too.
+            if (context.payload.sender.type === 'Bot') return;
+            await github.rest.issues.update({ ...context.repo, issue_number: issue.number, state: 'open' });
+            await github.rest.issues.createComment({
+              ...context.repo, issue_number: issue.number,
+              body: `Reopened: only @${assignees.join(', @')} can close this bug. Please close it from MagtechOne Tracker.`,
+            });
